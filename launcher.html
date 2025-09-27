@@ -1,22 +1,108 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Redirection</title>
-  <script>
-    window.onload = function () {
-      // Lien cible
-      const targetUrl = "https://promod.edflex.com";
-
-      // Ouvre dans une nouvelle fenêtre
-      window.open(targetUrl, '_blank');
-
-      // Optionnel : ferme la fenêtre Teams si ouverte dans un onglet intégré
-      window.close();
-    };
-  </script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Launching…</title>
+  <script src="https://res.cdn.office.net/teams-js/v2.0.0/js/MicrosoftTeams.min.js"></script>
+  <style>
+    :root { --fg:#111; --muted:#666; --border:#d0d7de; --bg:#fff; --shadow:rgba(0,0,0,.08); }
+    html,body { height:100%; margin:0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; display:flex; align-items:center; justify-content:center; background:var(--bg); color:var(--fg); }
+    .card { width:min(560px, 92vw); padding:24px; border:1px solid var(--border); border-radius:16px; box-shadow:0 6px 24px var(--shadow); text-align:center; }
+    .btn { display:inline-block; margin-top:8px; padding:10px 16px; border-radius:999px; border:1px solid var(--border); text-decoration:none; color:var(--fg); }
+    code { background:#f6f8fa; padding:2px 6px; border-radius:6px; }
+    .hidden { display:none; }
+  </style>
 </head>
 <body>
-  <p>Redirection en cours...</p>
+  <div class="card">
+    <h1>Opening your link in the browser…</h1>
+    <p id="status">If nothing happens, use the button below.</p>
+    <p><a id="fallback" class="btn" href="#" target="_blank" rel="noopener noreferrer">Open link</a></p>
+    <p id="warn" class="hidden" style="font-size:12px;color:var(--muted)"></p>
+  </div>
+
+<script>
+/**
+ * Robust launcher for Teams and plain web (GitHub Pages).
+ * Accepts:
+ *   - ?to=<absolute https URL>
+ *   - Alternatively ?to_b64=<base64 of absolute https URL>
+ * Optional allow-list:
+ *   - ?allow=domain1.example.com,sub.domain2.com (comma-separated)
+ *     If omitted, we allow any https URL by default (edit ALLOW_ANY to false to harden).
+ */
+
+const ALLOW_ANY = true; // set to false to force explicit allow-list
+
+function getParam(name){
+  const u = new URL(window.location.href);
+  return u.searchParams.get(name);
+}
+function decodeTo(){
+  const raw = getParam("to");
+  if (raw) return raw;
+  const b64 = getParam("to_b64");
+  if (!b64) return null;
+  try { return atob(b64); } catch { return null; }
+}
+function parseAllow(){
+  const val = getParam("allow");
+  if (!val) return [];
+  return val.split(",").map(s => s.trim()).filter(Boolean);
+}
+function isHttpsAbsolute(urlStr){
+  try {
+    const u = new URL(urlStr);
+    return u.protocol === "https:";
+  } catch { return false; }
+}
+function hostAllowed(urlStr, allowList){
+  if (ALLOW_ANY && allowList.length === 0) return true;
+  try {
+    const u = new URL(urlStr);
+    return allowList.includes(u.hostname);
+  } catch { return false; }
+}
+
+(async () => {
+  const to = decodeTo();
+  const allow = parseAllow();
+  const status = document.getElementById("status");
+  const warn = document.getElementById("warn");
+  const fallback = document.getElementById("fallback");
+
+  if (!to || !isHttpsAbsolute(to) || !hostAllowed(to, allow)) {
+    status.textContent = "Invalid or not allowed destination.";
+    warn.classList.remove("hidden");
+    warn.innerHTML = "Tip: pass <code>?to=https://example.com/</code> or <code>?to_b64=...</code> and optional <code>?allow=host1,host2</code>.";
+    fallback.classList.add("hidden");
+    return;
+  }
+
+  fallback.href = to;
+
+  // If not in Teams, just navigate (GitHub Pages direct usage)
+  const isInIframe = (window.self !== window.top);
+  const isTeams = typeof microsoftTeams !== "undefined";
+
+  try {
+    if (isTeams) {
+      await microsoftTeams.app.initialize();
+      await microsoftTeams.app.openLink(to);
+      // Some clients ignore openLink if not user-initiated; leave fallback visible.
+      status.textContent = "If the browser didn't open, click the button below.";
+    } else {
+      // Outside Teams: open in new tab and also replace current as fallback
+      window.open(to, "_blank", "noopener,noreferrer");
+      status.textContent = "Opened in a new tab.";
+    }
+  } catch (e) {
+    console.error("openLink failed:", e);
+    status.textContent = "Could not auto-open. Use the button below.";
+  }
+})();
+</script>
 </body>
 </html>
